@@ -10,6 +10,9 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Validators;
+using FinanzasPersonales.Api.Data;   // Ajusta al namespace de tu DbContext
+using FinanzasPersonales.Api.Models; // Ajusta al namespace de tu entidad Usuario
+using Microsoft.EntityFrameworkCore;
 
 namespace FinanzasPersonales.Api.Authentication;
 
@@ -41,10 +44,10 @@ public static class ExternalAuthentication
         services.AddAntiforgery(options =>
         {
             options.HeaderName = "RequestVerificationToken";
-            options.Cookie.Name = "__Host-Finanzas.Antiforgery";
-            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
+            options.Cookie.Name = "Finanzas.Antiforgery";
+            options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
             options.Cookie.HttpOnly = true;
-            options.Cookie.SameSite = SameSiteMode.Strict;
+            options.Cookie.SameSite = SameSiteMode.Lax;
         });
 
         // ÚNICO registro de la cookie local para todo el backend.
@@ -239,25 +242,72 @@ public static class ExternalAuthentication
         };
     }
 
-    private static Task NormalizeTicket(TicketReceivedContext context, string provider)
+    private static async Task NormalizeTicket(TicketReceivedContext context, string provider)
     {
         var principal = context.Principal;
-        var id = principal?.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(id))
+        var externalId = principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(externalId))
         {
             context.Fail("No se recibió una identidad válida.");
-            return Task.CompletedTask;
+            return;
         }
-        // Misma identidad y mismos claims para los seis proveedores; sin roles ni vínculos por correo.
+
+        var name = principal!.Identity?.Name ?? principal.FindFirstValue("name") ?? provider;
+        var email = principal.FindFirstValue(ClaimTypes.Email) ?? principal.FindFirstValue("email");
+
+        // 1. Obtener el DbContext desde el scope de la petición actual
+        var db = context.HttpContext.RequestServices.GetRequiredService<FinanzasDbContext>();
+        var ct = context.HttpContext.RequestAborted;
+
+        // 2. Buscar el usuario en BD (por email si el proveedor lo entregó)
+        Usuario? usuario = null;
+        if (!string.IsNullOrWhiteSpace(email))
+        {
+            var emailNormalizado = email.Trim().ToLowerInvariant();
+            usuario = await db.Usuarios
+                .FirstOrDefaultAsync(u => u.Email.ToLower() == emailNormalizado, ct);
+        }
+
+        // 3. Si no existe aún, crearlo y obtener su nuevo Guid (Id)
+        if (usuario is null)
+        {
+            usuario = new Usuario
+            {
+                Id = Guid.NewGuid(),
+                Nombre = name,
+                Email = email ?? $"{provider.ToLowerInvariant()}_{Guid.NewGuid():N}@local.invalid",
+                PasswordHash = string.Empty, // Ajusta si tu columna exige un valor o hash
+                FechaCreacion = DateTimeOffset.UtcNow,
+                Activo = true
+            };
+
+            db.Usuarios.Add(usuario);
+            await db.SaveChangesAsync(ct); // Aquí se persiste y queda confirmado su usuario.Id (Guid)
+        }
+        else if (!usuario.Activo)
+        {
+            // Regla del dominio: un usuario inactivo no puede iniciar sesión ni operar
+            context.Fail("El usuario está inactivo.");
+            return;
+        }
+
+        // 4. Usar usuario.Id (Guid) para construir los claims de la cookie
         var claims = new List<Claim>
         {
-            new(ClaimTypes.NameIdentifier, id), new(ProviderClaim, provider), new("provider", provider),
-            new(ClaimTypes.Name, principal!.Identity?.Name ?? principal.FindFirstValue("name") ?? provider)
+            new("usuario_id", usuario.Id.ToString()),
+            new(ClaimTypes.NameIdentifier, usuario.Id.ToString()),
+            new("external_id", externalId),
+            new(ProviderClaim, provider),
+            new("provider", provider),
+            new(ClaimTypes.Name, usuario.Nombre)
         };
-        var email = principal.FindFirstValue(ClaimTypes.Email) ?? principal.FindFirstValue("email");
-        if (!string.IsNullOrWhiteSpace(email)) claims.Add(new Claim(ClaimTypes.Email, email));
+
+        if (!string.IsNullOrWhiteSpace(usuario.Email))
+        {
+            claims.Add(new Claim(ClaimTypes.Email, usuario.Email));
+        }
+
         context.Principal = new ClaimsPrincipal(new ClaimsIdentity(claims, LocalScheme));
-        return Task.CompletedTask;
     }
 
     private static string? Text(JsonElement json, string property) => json.ValueKind == JsonValueKind.Object &&
