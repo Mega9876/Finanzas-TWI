@@ -161,7 +161,7 @@
     <div class="card" id="reporte-card">
       <div class="card-title">
         <div>
-          <span>📊 Reporte Autorizado: Salud Financiera Planificada</span>
+          <span>Reporte Autorizado: Salud Financiera Planificada</span>
           <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted); display: block;">
             Presupuestos &bull; Metas &bull; Recurrencias &bull; Recordatorios (Dev3)
           </span>
@@ -175,6 +175,25 @@
 
       <div id="reporte-content">
         <p style="color: var(--text-muted); font-size: 0.95rem;">Cargando reporte de salud financiera...</p>
+      </div>
+    </div>
+
+    <!-- Reporte Cuentas y Flujo Card -->
+    <div class="card" id="cuentas-flujo-card">
+      <div class="card-title">
+        <div>
+          <span>Reporte de Cuentas y Flujo</span>
+          <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted); display: block;">
+            Saldos por Cuenta &bull; Ingresos / Gastos &bull; Totales por Moneda
+          </span>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn-sm" id="btn-refresh-cuentas-flujo" onclick="loadCuentasFlujo()">Recargar Cuentas y Flujo</button>
+        </div>
+      </div>
+
+      <div id="cuentas-flujo-content">
+        <p style="color: var(--text-muted); font-size: 0.95rem;">Cargando reporte de cuentas y flujo...</p>
       </div>
     </div>
 
@@ -239,6 +258,7 @@
       refreshSession();
       loadProviders();
       loadReport();
+      loadCuentasFlujo();
     }
 
     function showAlert(msg, type = "info") {
@@ -304,6 +324,7 @@
             </div>
           `;
           loadReport();
+          loadCuentasFlujo();
         } else {
           dot.className = "status-dot dot-gray";
           title.textContent = "Estado de la Sesión: No Autenticado";
@@ -316,6 +337,7 @@
             </p>
           `;
           loadReport();
+          loadCuentasFlujo();
         }
       } catch (err) {
         console.error(`[Frontend] Error en fetch a /api/auth/me:`, err);
@@ -329,6 +351,7 @@
           </p>
         `;
         renderReportUnauthorized("Desconectado de la API.");
+        renderCuentasFlujoUnauthorized("Desconectado de la API.");
       }
     }
 
@@ -373,7 +396,7 @@
       container.innerHTML = `
         <div style="background: rgba(239, 68, 68, 0.08); border: 1px dashed rgba(239, 68, 68, 0.3); border-radius: 0.75rem; padding: 1.5rem; text-align: center;">
           <p style="font-size: 1.1rem; font-weight: 700; color: var(--danger); margin-bottom: 0.5rem;">
-            🔒 Reporte Protegido &bull; HTTP 401 Unauthorized
+            Reporte Protegido &bull; HTTP 401 Unauthorized
           </p>
           <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 550px; margin: 0 auto 1rem auto;">
             ${reason} Inicia sesión con Dropbox (u otro proveedor configurado) para generar y visualizar tu diagnóstico de salud financiera.
@@ -434,7 +457,7 @@
               ${recordatorios.recordatoriosPendientes}
             </div>
             <div class="kpi-sub">
-              ${recordatorios.recordatoriosVencidos > 0 ? `<span style="color:var(--danger);font-weight:bold;">⚠️ ${recordatorios.recordatoriosVencidos} vencido(s)</span>` : 'Sin vencimientos críticos'} &bull; ${recordatorios.totalMontoPendiente} BOB pend.
+              ${recordatorios.recordatoriosVencidos > 0 ? `<span style="color:var(--danger);font-weight:bold;">${recordatorios.recordatoriosVencidos} vencido(s)</span>` : 'Sin vencimientos críticos'} &bull; ${recordatorios.totalMontoPendiente} BOB pend.
             </div>
           </div>
 
@@ -450,7 +473,7 @@
           <!-- Metas -->
           <div style="background: #0f172a; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--card-border);">
             <div style="font-weight: 700; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--primary);">
-              🎯 Metas de Ahorro (${metas.detalle.length})
+              Metas de Ahorro (${metas.detalle.length})
             </div>
             ${metas.detalle.length === 0 ? '<p style="color:var(--text-muted);font-size:0.85rem;">No tienes metas registradas.</p>' : `
               <table class="report-table">
@@ -472,7 +495,7 @@
           <!-- Recordatorios de Pago -->
           <div style="background: #0f172a; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--card-border);">
             <div style="font-weight: 700; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--warning);">
-              ⏰ Recordatorios de Pago (${recordatorios.detalle.length})
+              Recordatorios de Pago (${recordatorios.detalle.length})
             </div>
             ${recordatorios.detalle.length === 0 ? '<p style="color:var(--text-muted);font-size:0.85rem;">No hay recordatorios registrados.</p>' : `
               <table class="report-table">
@@ -491,6 +514,137 @@
             `}
           </div>
         </div>
+      `;
+    }
+
+    // 3b. Consulta de Reporte de Cuentas y Flujo (/api/reportes/cuentas-flujo)
+    async function loadCuentasFlujo() {
+      const container = document.getElementById("cuentas-flujo-content");
+
+      try {
+        console.log(`[Frontend] Consultando cuentas y flujo en: ${API_URL}/api/reportes/cuentas-flujo`);
+        const res = await fetch(`${API_URL}/api/reportes/cuentas-flujo`, {
+          method: "GET",
+          credentials: "include"
+        });
+
+        console.log(`[Frontend] Código HTTP de cuentas-flujo:`, res.status);
+
+        if (res.status === 401) {
+          renderCuentasFlujoUnauthorized("Acceso denegado (HTTP 401 Unauthorized): Se requiere una sesión activa con correo válido.");
+          return;
+        }
+
+        if (res.status === 403) {
+          renderCuentasFlujoUnauthorized("Acceso restringido (HTTP 403 Forbidden): No se encontró un usuario activo vinculado al correo de la sesión.");
+          return;
+        }
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        console.log(`[Frontend] Datos de cuentas-flujo recibidos:`, data);
+        renderCuentasFlujoSuccess(data);
+      } catch (err) {
+        console.error(`[Frontend] Error cargando cuentas-flujo:`, err);
+        renderCuentasFlujoUnauthorized(`Error al obtener reporte de cuentas y flujo: ${err.message}`);
+      }
+    }
+
+    function renderCuentasFlujoUnauthorized(reason) {
+      const container = document.getElementById("cuentas-flujo-content");
+      container.innerHTML = `
+        <div style="background: rgba(239, 68, 68, 0.08); border: 1px dashed rgba(239, 68, 68, 0.3); border-radius: 0.75rem; padding: 1.5rem; text-align: center;">
+          <p style="font-size: 1.05rem; font-weight: 700; color: var(--danger); margin-bottom: 0.5rem;">
+            Reporte de Cuentas y Flujo Protegido
+          </p>
+          <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 560px; margin: 0 auto;">
+            ${reason}
+          </p>
+        </div>
+      `;
+    }
+
+    function renderCuentasFlujoSuccess(data) {
+      const container = document.getElementById("cuentas-flujo-content");
+      const totales = data.totalesPorMoneda || [];
+      const cuentas = data.cuentas || [];
+
+      const totalesHtml = totales.length === 0
+        ? `<p style="color: var(--text-muted); font-size: 0.9rem; margin-bottom: 1.25rem;">Sin totales por moneda registrados aún.</p>`
+        : `
+          <div class="kpi-row">
+            ${totales.map(t => `
+              <div class="kpi-card">
+                <div class="kpi-title">Moneda: ${t.moneda}</div>
+                <div class="kpi-value" style="color: ${t.saldoActualTotal >= 0 ? 'var(--success)' : 'var(--danger)'};">
+                  ${t.saldoActualTotal} ${t.moneda}
+                </div>
+                <div class="kpi-sub">
+                  Flujo neto: <strong style="color: ${t.flujoNeto >= 0 ? 'var(--success)' : 'var(--danger)'};">${t.flujoNeto >= 0 ? '+' : ''}${t.flujoNeto}</strong> &bull; Inicial: ${t.saldoInicialTotal}
+                </div>
+                <div class="kpi-sub">
+                  Ingresos: +${t.totalIngresos} &bull; Gastos: -${t.totalGastos}
+                </div>
+              </div>
+            `).join("")}
+          </div>
+        `;
+
+      const cuentasHtml = cuentas.length === 0
+        ? `<p style="color: var(--text-muted); font-size: 0.9rem;">No hay cuentas registradas para <strong>${data.usuarioEmail || data.usuarioNombre || "este usuario"}</strong>.</p>`
+        : `
+          <div style="background: #0f172a; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--card-border); overflow-x: auto;">
+            <div style="font-weight: 700; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--primary);">
+              Cuentas de ${data.usuarioNombre || data.usuarioEmail} (${cuentas.length})
+            </div>
+            <table class="report-table">
+              <thead>
+                <tr>
+                  <th>Cuenta</th>
+                  <th>Tipo</th>
+                  <th>Moneda</th>
+                  <th>Saldo Inicial</th>
+                  <th>Ingresos</th>
+                  <th>Gastos</th>
+                  <th>Saldo Actual</th>
+                  <th>Mov.</th>
+                  <th>Estado</th>
+                </tr>
+              </thead>
+              <tbody>
+                ${cuentas.map(c => `
+                  <tr>
+                    <td style="font-weight: 600;">${c.nombre}</td>
+                    <td>${c.tipo}</td>
+                    <td>${c.moneda}</td>
+                    <td>${c.saldoInicial}</td>
+                    <td style="color: var(--success);">+${c.totalIngresos}</td>
+                    <td style="color: var(--danger);">-${c.totalGastos}</td>
+                    <td style="font-weight: 700;">${c.saldoActual} ${c.moneda}</td>
+                    <td>${c.cantidadMovimientos}</td>
+                    <td>
+                      <span style="font-size: 0.75rem; color: ${c.activa ? 'var(--success)' : 'var(--text-muted)'};">
+                        ${c.activa ? 'Activa' : 'Inactiva'}
+                      </span>
+                    </td>
+                  </tr>
+                `).join("")}
+              </tbody>
+            </table>
+          </div>
+        `;
+
+      container.innerHTML = `
+        <div style="margin-bottom: 1rem; font-size: 0.85rem; color: var(--text-muted);">
+          Usuario: <strong style="color: var(--text-main);">${data.usuarioNombre || "-"}</strong>
+          (${data.usuarioEmail || "-"}) &bull;
+          <span style="font-family: monospace;">${data.usuarioId || ""}</span>
+        </div>
+        ${totalesHtml}
+        ${cuentasHtml}
       `;
     }
 
@@ -513,7 +667,6 @@
     async function testUnauthorizedDirectly() {
       try {
         showAlert("Ejecutando prueba sin credenciales a /api/reportes/salud-financiera...", "info");
-        // Hacemos fetch explícitamente sin credenciales para forzar y demostrar el 401
         const res = await fetch(`${API_URL}/api/reportes/salud-financiera`, {
           method: "GET",
           credentials: "omit"
