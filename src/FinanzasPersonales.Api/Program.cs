@@ -17,6 +17,11 @@ builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddOpenApi();
 builder.Services.AddExternalAuthentication(builder.Configuration);
 builder.Services.AddAuthorization();
+builder.Services.AddOptions<VinculosIdentidadDev3Options>()
+    .Bind(builder.Configuration.GetSection("Dev3"))
+    .Validate(options => options.EsValida(), "Los vínculos de identidad Dev3 deben ser explícitos, válidos y no duplicados.")
+    .ValidateOnStart();
+builder.Services.AddScoped<AccesoDev3Filter>();
 
 builder.Services.AddDbContext<FinanzasDbContext>(options => options.UseNpgsql(connectionString));
 builder.Services.AddDistributedMemoryCache();

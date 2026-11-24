@@ -19,7 +19,7 @@ public class CategoriaService
     {
         var query = _db.Categorias
             .AsNoTracking()
-            .Where(c => c.UsuarioId == usuarioId);
+            .Where(c => c.UsuarioId == usuarioId && c.Activa);
 
         if (!string.IsNullOrWhiteSpace(tipo))
         {
@@ -46,7 +46,7 @@ public class CategoriaService
     {
         return await _db.Categorias
             .AsNoTracking()
-            .Where(c => c.Id == id && c.UsuarioId == usuarioId)
+            .Where(c => c.Id == id && c.UsuarioId == usuarioId && c.Activa)
             .Select(c => new CategoriaResponseDto
             {
                 Id = c.Id,
@@ -58,6 +58,22 @@ public class CategoriaService
                 Activa = c.Activa
             })
             .FirstOrDefaultAsync();
+    }
+
+    public async Task<bool> SoftDeleteAsync(Guid id, Guid usuarioId)
+    {
+        var categoria = await _db.Categorias
+            .FirstOrDefaultAsync(c => c.Id == id && c.UsuarioId == usuarioId);
+
+        if (categoria is null)
+            return false;
+
+        if (!categoria.Activa)
+            throw new InvalidOperationException("La categoría ya se encuentra inactiva o eliminada.");
+
+        categoria.Activa = false;
+        await _db.SaveChangesAsync();
+        return true;
     }
 
     public async Task<CategoriaResponseDto> CreateAsync(Guid usuarioId, CrearCategoriaDto dto)
@@ -102,6 +118,52 @@ public class CategoriaService
             Id = categoria.Id,
             UsuarioId = categoria.UsuarioId,
             NombreUsuario = usuario.Nombre,
+            Nombre = categoria.Nombre,
+            Tipo = categoria.Tipo,
+            LimiteMensual = categoria.LimiteMensual,
+            Activa = categoria.Activa
+        };
+    }
+
+    public async Task<CategoriaResponseDto?> UpdateAsync(
+        Guid id,
+        Guid usuarioId,
+        ActualizarCategoriaDto dto)
+    {
+        var categoria = await _db.Categorias
+            .Include(c => c.Usuario)
+            .FirstOrDefaultAsync(c => c.Id == id && c.UsuarioId == usuarioId);
+
+        if (categoria is null)
+            return null;
+
+        if (!categoria.Activa)
+            throw new InvalidOperationException("No se puede actualizar una categoría inactiva o eliminada.");
+
+        if (string.IsNullOrWhiteSpace(dto.Nombre))
+            throw new ArgumentException("El nombre de la categoría es obligatorio.");
+
+        var tipoNormalizado = dto.Tipo.Trim().ToLowerInvariant();
+        if (!TiposValidos.Contains(tipoNormalizado))
+            throw new ArgumentException("Tipo de categoría inválido. Use: ingreso o gasto.");
+
+        if (dto.LimiteMensual.HasValue && dto.LimiteMensual.Value < 0)
+            throw new ArgumentException("El límite mensual no puede ser negativo.");
+
+        if (tipoNormalizado == "ingreso" && dto.LimiteMensual.HasValue)
+            throw new ArgumentException("Solo las categorías de gasto pueden tener límite mensual.");
+
+        categoria.Nombre = dto.Nombre.Trim();
+        categoria.Tipo = tipoNormalizado;
+        categoria.LimiteMensual = dto.LimiteMensual;
+
+        await _db.SaveChangesAsync();
+
+        return new CategoriaResponseDto
+        {
+            Id = categoria.Id,
+            UsuarioId = categoria.UsuarioId,
+            NombreUsuario = categoria.Usuario.Nombre,
             Nombre = categoria.Nombre,
             Tipo = categoria.Tipo,
             LimiteMensual = categoria.LimiteMensual,

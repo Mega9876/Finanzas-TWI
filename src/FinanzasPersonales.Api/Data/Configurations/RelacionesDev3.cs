@@ -7,7 +7,7 @@ internal static class RelacionesDev3
 {
     public static void ConEntidadExistente<T>(
         EntityTypeBuilder<T> builder, string nombreEntidad, string claveForanea,
-        string navegacion = null)
+        string? navegacion = null)
         where T : class
     {
         var principal = builder.Metadata.Model.GetEntityTypes()
@@ -21,15 +21,11 @@ internal static class RelacionesDev3
                 "Integre las entidades y migraciones base del líder; no genere una migración parcial.");
         }
 
-        if (navegacion is not null)
-            builder.HasOne(navegacion, principal.Name)
-                   .WithMany()
-                   .HasForeignKey(claveForanea)
-                   .OnDelete(DeleteBehavior.Restrict);
-        else
-            builder.HasOne(principal.Name)
-                   .WithMany()
-                   .HasForeignKey(claveForanea)
-                   .OnDelete(DeleteBehavior.Restrict);
+        // Usar dos argumentos: HasOne(string) en el builder genérico interpreta
+        // el argumento como navegación CLR, no como nombre de entidad principal.
+        builder.HasOne(principal.Name, navegacion)
+            .WithMany()
+            .HasForeignKey(claveForanea)
+            .OnDelete(DeleteBehavior.Restrict);
     }
-}   
+}

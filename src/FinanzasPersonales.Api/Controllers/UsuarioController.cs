@@ -1,13 +1,15 @@
-using Microsoft.AspNetCore.Http;
+using FinanzasPersonales.Api;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
-namespace FinanzasPersonales.Api
+namespace FinanzasPersonales.Api.Controllers;
+
+[Authorize]
+[ApiController]
+[Route("api/[controller]")]
+public class UsuarioController : ControllerBase
 {
-    [Route("api/[controller]")]
-    [ApiController]
-    public class UsuarioController : ControllerBase
-    {
-        private readonly UsuarioService _service;
+    private readonly UsuarioService _service;
 
     public UsuarioController(UsuarioService service)
     {
@@ -45,5 +47,36 @@ namespace FinanzasPersonales.Api
             return BadRequest(new { message = ex.Message });
         }
     }
+
+    [HttpPut("{id:guid}")]
+    public async Task<ActionResult<UsuarioResponseDto>> Update(Guid id, ActualizarUsuarioDto dto)
+    {
+        try
+        {
+            var actualizado = await _service.UpdateAsync(id, dto);
+            return actualizado is null ? NotFound() : Ok(actualizado);
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
+        catch (ArgumentException ex)
+        {
+            return BadRequest(new { message = ex.Message });
+        }
+    }
+
+    [HttpDelete("{id:guid}")]
+    public async Task<IActionResult> Delete(Guid id)
+    {
+        try
+        {
+            var eliminado = await _service.SoftDeleteAsync(id);
+            return eliminado ? NoContent() : NotFound();
+        }
+        catch (InvalidOperationException ex)
+        {
+            return Conflict(new { message = ex.Message });
+        }
     }
 }
