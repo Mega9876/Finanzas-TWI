@@ -1,0 +1,13 @@
+**/.git
+**/.github
+**/.vscode
+**/.idea
+**/bin
+**/obj
+**/.env
+**/.env.*
+!**/.env.example
+**/temp-keys
+**/dataprotection-keys
+**/TestResults
+**/*.user

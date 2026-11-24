@@ -41,13 +41,15 @@ public static class ExternalAuthentication
             logging.AddFilter("Microsoft.AspNetCore.Authentication.OAuth.OAuthHandler", LogLevel.None);
             logging.AddFilter("Microsoft.AspNetCore.Authentication.OpenIdConnect.OpenIdConnectHandler", LogLevel.None);
         });
+        var isHttpMode = configuration["USE_HTTP_COOKIES"] == "true";
         services.AddAntiforgery(options =>
         {
             options.HeaderName = "RequestVerificationToken";
-            options.Cookie.Name = "Finanzas.Antiforgery";
-            options.Cookie.SecurePolicy = CookieSecurePolicy.SameAsRequest;
+
+            options.Cookie.Name = isHttpMode ? "Finanzas.Antiforgery" : "__Host-Finanzas.Antiforgery";
+            options.Cookie.SecurePolicy = isHttpMode ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
             options.Cookie.HttpOnly = true;
-            options.Cookie.SameSite = SameSiteMode.Lax;
+            options.Cookie.SameSite = isHttpMode ? SameSiteMode.Lax : SameSiteMode.Strict;
         });
 
         // ÚNICO registro de la cookie local para todo el backend.
@@ -61,8 +63,8 @@ public static class ExternalAuthentication
         {
             options.Cookie.Name = ".FinanzasPersonales.Auth";
             options.Cookie.HttpOnly = true;
-            options.Cookie.SecurePolicy = CookieSecurePolicy.Always;
-            options.Cookie.SameSite = SameSiteMode.Lax;
+            options.Cookie.SecurePolicy = isHttpMode ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
+            options.Cookie.SameSite = isHttpMode ? SameSiteMode.Lax : SameSiteMode.None;
             options.LoginPath = LoginPath;
             options.AccessDeniedPath = LoginPath;
             options.LogoutPath = "/api/auth/logout";
@@ -91,18 +93,18 @@ public static class ExternalAuthentication
                     !Guid.TryParse(tenant, out _))
                     throw new InvalidOperationException("Microsoft TenantId debe ser common, consumers, organizations o un GUID.");
                 authentication.AddOpenIdConnect(provider.Scheme,
-                    options => ConfigureOidc(options, provider, clientId, secret, callback, tenant));
+                    options => ConfigureOidc(options, provider, clientId, secret, callback, tenant, isHttpMode));
             }
             else
                 authentication.AddOAuth(provider.Scheme,
-                    options => ConfigureOAuth(options, provider, clientId, secret, callback));
+                    options => ConfigureOAuth(options, provider, clientId, secret, callback, isHttpMode));
         }
 
         return services;
     }
 
     private static void ConfigureOAuth(OAuthOptions options, ExternalProvider provider,
-        string clientId, string secret, string callback)
+        string clientId, string secret, string callback, bool isHttpMode = false)
     {
         options.SignInScheme = LocalScheme;
         options.ClientId = clientId;
@@ -112,9 +114,9 @@ public static class ExternalAuthentication
         options.UsePkce = provider.Name is "Dropbox" or "Spotify";
         options.RemoteAuthenticationTimeout = TimeSpan.FromMinutes(10);
         options.BackchannelTimeout = TimeSpan.FromSeconds(30);
-        options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.CorrelationCookie.SecurePolicy = isHttpMode ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
         options.CorrelationCookie.HttpOnly = true;
-        options.CorrelationCookie.SameSite = SameSiteMode.None;
+        options.CorrelationCookie.SameSite = isHttpMode ? SameSiteMode.Lax : SameSiteMode.None;
         var endpoints = provider.Name switch
         {
             "Discord" => ("https://discord.com/oauth2/authorize", "https://discord.com/api/oauth2/token",
@@ -139,8 +141,9 @@ public static class ExternalAuthentication
             OnRemoteFailure = context => Failure(context, provider.Name),
             OnAccessDenied = context =>
             {
+                var returnUrl = context.Properties?.RedirectUri;
                 context.HandleResponse();
-                context.Response.Redirect(ErrorPath(provider.Name, "cancelled"));
+                context.Response.Redirect(ErrorPath(provider.Name, "cancelled", returnUrl));
                 return Task.CompletedTask;
             }
         };
@@ -180,7 +183,7 @@ public static class ExternalAuthentication
     }
 
     private static void ConfigureOidc(OpenIdConnectOptions options, ExternalProvider provider,
-        string clientId, string secret, string callback, string tenant)
+        string clientId, string secret, string callback, string tenant, bool isHttpMode = false)
     {
         options.Authority = provider.Name == "Google" ? "https://accounts.google.com" :
             $"https://login.microsoftonline.com/{tenant}/v2.0";
@@ -200,12 +203,12 @@ public static class ExternalAuthentication
         foreach (var scope in new[] { "openid", "profile", "email" }) options.Scope.Add(scope);
         options.RemoteAuthenticationTimeout = TimeSpan.FromMinutes(10);
         options.BackchannelTimeout = TimeSpan.FromSeconds(30);
-        options.CorrelationCookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.CorrelationCookie.SecurePolicy = isHttpMode ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
         options.CorrelationCookie.HttpOnly = true;
-        options.CorrelationCookie.SameSite = SameSiteMode.None;
-        options.NonceCookie.SecurePolicy = CookieSecurePolicy.Always;
+        options.CorrelationCookie.SameSite = isHttpMode ? SameSiteMode.Lax : SameSiteMode.None;
+        options.NonceCookie.SecurePolicy = isHttpMode ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
         options.NonceCookie.HttpOnly = true;
-        options.NonceCookie.SameSite = SameSiteMode.None;
+        options.NonceCookie.SameSite = isHttpMode ? SameSiteMode.Lax : SameSiteMode.None;
         options.ProtocolValidator.RequireNonce = true;
         options.TokenValidationParameters.NameClaimType = "name";
         options.TokenValidationParameters.ValidateIssuer = true;
@@ -242,72 +245,25 @@ public static class ExternalAuthentication
         };
     }
 
-    private static async Task NormalizeTicket(TicketReceivedContext context, string provider)
+    private static Task NormalizeTicket(TicketReceivedContext context, string provider)
     {
         var principal = context.Principal;
-        var externalId = principal?.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (string.IsNullOrWhiteSpace(externalId))
+        var id = principal?.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (string.IsNullOrWhiteSpace(id))
         {
             context.Fail("No se recibió una identidad válida.");
-            return;
+            return Task.CompletedTask;
         }
-
-        var name = principal!.Identity?.Name ?? principal.FindFirstValue("name") ?? provider;
-        var email = principal.FindFirstValue(ClaimTypes.Email) ?? principal.FindFirstValue("email");
-
-        // 1. Obtener el DbContext desde el scope de la petición actual
-        var db = context.HttpContext.RequestServices.GetRequiredService<FinanzasDbContext>();
-        var ct = context.HttpContext.RequestAborted;
-
-        // 2. Buscar el usuario en BD (por email si el proveedor lo entregó)
-        Usuario? usuario = null;
-        if (!string.IsNullOrWhiteSpace(email))
-        {
-            var emailNormalizado = email.Trim().ToLowerInvariant();
-            usuario = await db.Usuarios
-                .FirstOrDefaultAsync(u => u.Email.ToLower() == emailNormalizado, ct);
-        }
-
-        // 3. Si no existe aún, crearlo y obtener su nuevo Guid (Id)
-        if (usuario is null)
-        {
-            usuario = new Usuario
-            {
-                Id = Guid.NewGuid(),
-                Nombre = name,
-                Email = email ?? $"{provider.ToLowerInvariant()}_{Guid.NewGuid():N}@local.invalid",
-                PasswordHash = string.Empty, // Ajusta si tu columna exige un valor o hash
-                FechaCreacion = DateTimeOffset.UtcNow,
-                Activo = true
-            };
-
-            db.Usuarios.Add(usuario);
-            await db.SaveChangesAsync(ct); // Aquí se persiste y queda confirmado su usuario.Id (Guid)
-        }
-        else if (!usuario.Activo)
-        {
-            // Regla del dominio: un usuario inactivo no puede iniciar sesión ni operar
-            context.Fail("El usuario está inactivo.");
-            return;
-        }
-
-        // 4. Usar usuario.Id (Guid) para construir los claims de la cookie
+        // Misma identidad y mismos claims para los seis proveedores; sin roles ni vínculos por correo.
         var claims = new List<Claim>
         {
-            new("usuario_id", usuario.Id.ToString()),
-            new(ClaimTypes.NameIdentifier, usuario.Id.ToString()),
-            new("external_id", externalId),
-            new(ProviderClaim, provider),
-            new("provider", provider),
-            new(ClaimTypes.Name, usuario.Nombre)
+            new(ClaimTypes.NameIdentifier, id), new(ProviderClaim, provider), new("provider", provider),
+            new(ClaimTypes.Name, principal!.Identity?.Name ?? principal.FindFirstValue("name") ?? provider)
         };
-
-        if (!string.IsNullOrWhiteSpace(usuario.Email))
-        {
-            claims.Add(new Claim(ClaimTypes.Email, usuario.Email));
-        }
-
+        var email = principal.FindFirstValue(ClaimTypes.Email) ?? principal.FindFirstValue("email");
+        if (!string.IsNullOrWhiteSpace(email)) claims.Add(new Claim(ClaimTypes.Email, email));
         context.Principal = new ClaimsPrincipal(new ClaimsIdentity(claims, LocalScheme));
+        return Task.CompletedTask;
     }
 
     private static string? Text(JsonElement json, string property) => json.ValueKind == JsonValueKind.Object &&
@@ -323,13 +279,24 @@ public static class ExternalAuthentication
         return Task.CompletedTask;
     }
 
-    private static string ErrorPath(string provider, string error) => LoginPath + "?error=" + provider.ToLowerInvariant() + "-" + error;
+    private static string ErrorPath(string provider, string error, string? returnUrl = null)
+    {
+        var errorParam = "error=" + provider.ToLowerInvariant() + "-" + error;
+        if (!string.IsNullOrWhiteSpace(returnUrl) && Uri.TryCreate(returnUrl, UriKind.Absolute, out _))
+        {
+            var separator = returnUrl.Contains('?') ? "&" : "?";
+            return returnUrl + separator + errorParam;
+        }
+        return LoginPath + "?" + errorParam;
+    }
+
     private static Task Failure(RemoteFailureContext context, string provider)
     {
-        context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Finanzas.Authentication")
-            .LogWarning("No se completó la autenticación externa de {Provider}.", provider);
+        var logger = context.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>().CreateLogger("Finanzas.Authentication");
+        logger.LogError(context.Failure, "Fallo en autenticación remota de {Provider}: {Message}", provider, context.Failure?.Message);
+        var returnUrl = context.Properties?.RedirectUri;
         context.HandleResponse();
-        context.Response.Redirect(ErrorPath(provider, "failed"));
+        context.Response.Redirect(ErrorPath(provider, "failed", returnUrl));
         return Task.CompletedTask;
     }
 

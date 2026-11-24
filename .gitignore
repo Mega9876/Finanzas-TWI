@@ -278,3 +278,12 @@ __pycache__/
 .env
 .env.*
 !.env.example
+
+# Documentación / resumen de contexto local
+RESUMEN_PROYECTO.md
+
+# Directorios temporales locales de desarrollo
+.vscode/
+**/temp-keys/
+
+

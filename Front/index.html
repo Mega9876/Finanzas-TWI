@@ -1,0 +1,635 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Finanzas-TWI — Portal de Autenticación & Reporte Dev3</title>
+  <script src="config.js"></script>
+  <style>
+    :root {
+      --bg: #0b1120;
+      --card-bg: #1e293b;
+      --card-border: #334155;
+      --text-main: #f8fafc;
+      --text-muted: #94a3b8;
+      --primary: #38bdf8;
+      --success: #22c55e;
+      --danger: #ef4444;
+      --warning: #f59e0b;
+      --purple: #a855f7;
+      --dropbox: #0061fe;
+      --google: #ea4335;
+      --discord: #5865f2;
+      --twitch: #9146ff;
+      --spotify: #1db954;
+      --microsoft: #00a4ef;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    body { background-color: var(--bg); color: var(--text-main); min-height: 100vh; display: flex; flex-direction: column; align-items: center; padding: 2rem 1rem; }
+    .container { width: 100%; max-width: 900px; display: flex; flex-direction: column; gap: 1.5rem; }
+
+    /* Header */
+    .header { text-align: center; margin-bottom: 0.5rem; }
+    .badge { display: inline-block; padding: 0.35rem 0.85rem; border-radius: 9999px; font-size: 0.8rem; font-weight: 700; background: rgba(56, 189, 248, 0.15); color: var(--primary); border: 1px solid rgba(56, 189, 248, 0.3); margin-bottom: 0.75rem; }
+    h1 { font-size: 1.85rem; font-weight: 800; letter-spacing: -0.025em; margin-bottom: 0.35rem; }
+    .subtitle { color: var(--text-muted); font-size: 0.95rem; }
+
+    /* API Switcher Bar */
+    .api-bar { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 0.75rem; padding: 0.85rem 1.25rem; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 0.75rem; }
+    .api-label { font-size: 0.85rem; color: var(--text-muted); display: flex; align-items: center; gap: 0.5rem; }
+    .api-selector-group { display: flex; align-items: center; gap: 0.5rem; flex-grow: 1; justify-content: flex-end; }
+    .api-select { background: #0f172a; color: var(--text-main); border: 1px solid var(--card-border); padding: 0.4rem 0.75rem; border-radius: 0.5rem; font-size: 0.85rem; outline: none; }
+    .api-input { background: #0f172a; color: var(--text-main); border: 1px solid var(--card-border); padding: 0.4rem 0.75rem; border-radius: 0.5rem; font-size: 0.85rem; flex-grow: 1; max-width: 250px; }
+    .btn-sm { padding: 0.4rem 0.85rem; font-size: 0.85rem; border-radius: 0.5rem; cursor: pointer; border: 1px solid var(--card-border); background: #334155; color: white; font-weight: 600; text-decoration: none; }
+    .btn-sm:hover { background: #475569; }
+
+    /* Status Alert */
+    .alert { padding: 1rem 1.25rem; border-radius: 0.75rem; font-size: 0.9rem; line-height: 1.4; display: none; }
+    .alert.info { background: rgba(56, 189, 248, 0.1); border: 1px solid rgba(56, 189, 248, 0.3); color: #7dd3fc; }
+    .alert.success { background: rgba(34, 197, 94, 0.1); border: 1px solid rgba(34, 197, 94, 0.3); color: #86efac; }
+    .alert.error { background: rgba(239, 68, 68, 0.1); border: 1px solid rgba(239, 68, 68, 0.3); color: #fca5a5; }
+    .alert.warning { background: rgba(245, 158, 11, 0.1); border: 1px solid rgba(245, 158, 11, 0.3); color: #fde68a; }
+
+    /* Main Cards */
+    .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: 1rem; padding: 1.75rem; box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4); }
+    .card-title { font-size: 1.15rem; font-weight: 700; margin-bottom: 1.25rem; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255, 255, 255, 0.07); padding-bottom: 0.75rem; }
+    .status-dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; margin-right: 0.5rem; }
+    .dot-green { background: var(--success); box-shadow: 0 0 10px var(--success); }
+    .dot-gray { background: var(--text-muted); }
+
+    /* Session Info Table */
+    .info-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .info-item { background: #0f172a; padding: 0.85rem 1rem; border-radius: 0.65rem; border: 1px solid rgba(255, 255, 255, 0.05); }
+    .info-label { font-size: 0.75rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--text-muted); margin-bottom: 0.25rem; }
+    .info-value { font-size: 0.95rem; font-weight: 600; color: var(--text-main); word-break: break-all; }
+
+    /* Report Section */
+    .kpi-row { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 1rem; margin-bottom: 1.5rem; }
+    .kpi-card { background: #0f172a; border: 1px solid var(--card-border); border-radius: 0.75rem; padding: 1.15rem; }
+    .kpi-title { font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.35rem; }
+    .kpi-value { font-size: 1.45rem; font-weight: 800; color: var(--text-main); }
+    .kpi-sub { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.35rem; }
+
+    .health-banner { border-radius: 0.75rem; padding: 1rem 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: center; justify-content: space-between; gap: 1rem; }
+    .health-badge { font-size: 0.85rem; font-weight: 800; padding: 0.35rem 0.85rem; border-radius: 9999px; text-transform: uppercase; }
+
+    .progress-bar-container { width: 100%; height: 8px; background: #334155; border-radius: 4px; overflow: hidden; margin-top: 0.5rem; }
+    .progress-bar-fill { height: 100%; background: var(--success); transition: width 0.3s; }
+
+    .report-table { width: 100%; border-collapse: collapse; margin-top: 0.75rem; font-size: 0.85rem; }
+    .report-table th, .report-table td { padding: 0.65rem 0.75rem; text-align: left; border-bottom: 1px solid rgba(255, 255, 255, 0.05); }
+    .report-table th { color: var(--text-muted); font-weight: 600; text-transform: uppercase; font-size: 0.75rem; }
+
+    /* Provider Buttons Grid */
+    .providers-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 1rem; }
+    .provider-card { background: #0f172a; border: 1px solid var(--card-border); border-radius: 0.75rem; padding: 1.15rem; display: flex; flex-direction: column; justify-content: space-between; gap: 0.85rem; transition: transform 0.15s, border-color 0.15s; }
+    .provider-card:hover { border-color: var(--primary); transform: translateY(-2px); }
+    .provider-header { display: flex; align-items: center; justify-content: space-between; }
+    .provider-name { font-weight: 700; font-size: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+    .tag { font-size: 0.7rem; font-weight: 700; padding: 0.2rem 0.5rem; border-radius: 0.35rem; }
+    .tag-configured { background: rgba(34, 197, 94, 0.15); color: #86efac; border: 1px solid rgba(34, 197, 94, 0.3); }
+    .tag-pending { background: rgba(148, 163, 184, 0.15); color: var(--text-muted); border: 1px solid rgba(148, 163, 184, 0.3); }
+
+    .btn { display: flex; align-items: center; justify-content: center; gap: 0.5rem; width: 100%; padding: 0.7rem 1rem; border-radius: 0.5rem; font-weight: 600; font-size: 0.9rem; text-decoration: none; cursor: pointer; border: none; transition: opacity 0.2s; }
+    .btn:hover { opacity: 0.9; }
+    .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+    .btn-dropbox { background: var(--dropbox); color: white; }
+    .btn-google { background: var(--google); color: white; }
+    .btn-discord { background: var(--discord); color: white; }
+    .btn-twitch { background: var(--twitch); color: white; }
+    .btn-spotify { background: var(--spotify); color: white; }
+    .btn-microsoft { background: var(--microsoft); color: white; }
+    .btn-logout { background: var(--danger); color: white; }
+    .btn-seed { background: var(--purple); color: white; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Header -->
+    <div class="header">
+      <span class="badge">FINANZAS-TWI &bull; ALCANCE DEV3</span>
+      <h1>Portal de Finanzas Personales & Reportes</h1>
+      <p class="subtitle">Autenticación OAuth/OIDC &bull; Reporte de Salud Financiera Planificada</p>
+    </div>
+
+    <!-- API Selector Bar -->
+    <div class="api-bar">
+      <div class="api-label">
+        <strong>Backend URL:</strong>
+        <span id="current-api-text" style="color: var(--primary); font-family: monospace;"></span>
+      </div>
+      <div class="api-selector-group">
+        <select id="api-instance-select" class="api-select" onchange="onInstanceSelect(this.value)">
+          <option value="http://localhost:5000">Docker Dev (5000)</option>
+          <option value="https://localhost:7133">Local HTTPS (7133)</option>
+          <option value="http://localhost:5257">Local HTTP (5257)</option>
+          <option value="http://localhost:5001">Instancia 1 (5001)</option>
+          <option value="http://localhost:5002">Instancia 2 (5002)</option>
+          <option value="http://localhost:5003">Instancia 3 (5003)</option>
+          <option value="http://localhost:5004">Instancia 4 (5004)</option>
+          <option value="custom">Personalizado...</option>
+        </select>
+        <input id="api-custom-input" class="api-input" type="text" placeholder="http://host:port" style="display:none;" />
+        <button class="btn-sm" onclick="applyApiUrl()">Aplicar</button>
+      </div>
+    </div>
+
+    <!-- Alert / Notifications -->
+    <div id="alert-box" class="alert"></div>
+
+    <!-- Sesión Activa Card -->
+    <div class="card">
+      <div class="card-title">
+        <div style="display: flex; align-items: center;">
+          <span id="session-dot" class="status-dot dot-gray"></span>
+          <span id="session-title">Estado de la Sesión</span>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn-sm" onclick="refreshSession()">Actualizar</button>
+          <button id="btn-logout" class="btn-sm btn-logout" style="display:none;" onclick="logout()">Cerrar Sesión</button>
+        </div>
+      </div>
+
+      <div id="session-content">
+        <p style="color: var(--text-muted); font-size: 0.95rem;">Consultando estado de sesión con el backend...</p>
+      </div>
+    </div>
+
+    <!-- Reporte Autorizado Dev3 Card -->
+    <div class="card" id="reporte-card">
+      <div class="card-title">
+        <div>
+          <span>📊 Reporte Autorizado: Salud Financiera Planificada</span>
+          <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted); display: block;">
+            Presupuestos &bull; Metas &bull; Recurrencias &bull; Recordatorios (Dev3)
+          </span>
+        </div>
+        <div style="display: flex; gap: 0.5rem;">
+          <button class="btn-sm btn-seed" id="btn-seed" style="display:none;" onclick="seedData()">Sembrar Datos Ejemplo</button>
+          <button class="btn-sm" id="btn-refresh-report" onclick="loadReport()">Recargar Reporte</button>
+          <button class="btn-sm" style="background: #475569;" onclick="testUnauthorizedDirectly()">Probar 401 Sin Sesión</button>
+        </div>
+      </div>
+
+      <div id="reporte-content">
+        <p style="color: var(--text-muted); font-size: 0.95rem;">Cargando reporte de salud financiera...</p>
+      </div>
+    </div>
+
+    <!-- Proveedores OAuth Card -->
+    <div class="card">
+      <div class="card-title">
+        <span>Proveedores de Identidad OAuth / OIDC (6 Proveedores)</span>
+        <span style="font-size: 0.8rem; font-weight: normal; color: var(--text-muted);">Dev1 &bull; Dev2 &bull; Dev3</span>
+      </div>
+      <div id="providers-container" class="providers-grid">
+        <p style="color: var(--text-muted); font-size: 0.9rem;">Cargando proveedores...</p>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // 1. Inicialización y Gestión de API_URL
+    let API_URL = (window.APP_CONFIG && window.APP_CONFIG.API_URL) ? window.APP_CONFIG.API_URL : "https://localhost:7133";
+    const savedApi = localStorage.getItem("FINANZAS_API_URL");
+    if (savedApi) API_URL = savedApi;
+
+    function updateApiDisplay() {
+      document.getElementById("current-api-text").textContent = API_URL;
+      const select = document.getElementById("api-instance-select");
+      const customInput = document.getElementById("api-custom-input");
+      let found = false;
+      for (let i = 0; i < select.options.length; i++) {
+        if (select.options[i].value === API_URL) {
+          select.selectedIndex = i;
+          customInput.style.display = "none";
+          found = true;
+          break;
+        }
+      }
+      if (!found) {
+        select.value = "custom";
+        customInput.style.display = "inline-block";
+        customInput.value = API_URL;
+      }
+    }
+
+    function onInstanceSelect(val) {
+      const customInput = document.getElementById("api-custom-input");
+      if (val === "custom") {
+        customInput.style.display = "inline-block";
+      } else {
+        customInput.style.display = "none";
+      }
+    }
+
+    function applyApiUrl() {
+      const select = document.getElementById("api-instance-select");
+      let selected = select.value;
+      if (selected === "custom") {
+        const custom = document.getElementById("api-custom-input").value.trim();
+        if (custom) selected = custom.replace(/\/$/, "");
+      }
+      API_URL = selected;
+      localStorage.setItem("FINANZAS_API_URL", API_URL);
+      showAlert(`Conectando a API en: ${API_URL}`, "info");
+      updateApiDisplay();
+      refreshSession();
+      loadProviders();
+      loadReport();
+    }
+
+    function showAlert(msg, type = "info") {
+      const box = document.getElementById("alert-box");
+      box.className = `alert ${type}`;
+      box.textContent = msg;
+      box.style.display = "block";
+      setTimeout(() => { if (box.textContent === msg) box.style.display = "none"; }, 6000);
+    }
+
+    // 2. Consulta de Sesión Activa (/api/auth/me)
+    let currentSession = null;
+
+    async function refreshSession() {
+      const dot = document.getElementById("session-dot");
+      const title = document.getElementById("session-title");
+      const content = document.getElementById("session-content");
+      const logoutBtn = document.getElementById("btn-logout");
+      const seedBtn = document.getElementById("btn-seed");
+
+      try {
+        console.log(`[Frontend] Consultando estado de sesión en: ${API_URL}/api/auth/me`);
+        const res = await fetch(`${API_URL}/api/auth/me`, {
+          method: "GET",
+          credentials: "include"
+        });
+
+        console.log(`[Frontend] Código HTTP devuelto por /api/auth/me:`, res.status);
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+
+        const data = await res.json();
+        console.log(`[Frontend] Payload de sesión recibido:`, data);
+        currentSession = data;
+
+        if (data.isAuthenticated) {
+          dot.className = "status-dot dot-green";
+          title.textContent = `Sesión Activa: ${data.nombre || data.email || "Usuario"}`;
+          logoutBtn.style.display = "inline-block";
+          seedBtn.style.display = "inline-block";
+
+          content.innerHTML = `
+            <div class="info-grid">
+              <div class="info-item">
+                <div class="info-label">Proveedor</div>
+                <div class="info-value" style="color: var(--primary);">${data.proveedor || "-"}</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">Nombre</div>
+                <div class="info-value">${data.nombre || "-"}</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">Correo Electrónico</div>
+                <div class="info-value">${data.email || "(No provisto)"}</div>
+              </div>
+              <div class="info-item">
+                <div class="info-label">ID Externo (OAuth Sub)</div>
+                <div class="info-value" style="font-family: monospace; font-size: 0.85rem;">${data.identificadorExterno || "-"}</div>
+              </div>
+              <div class="info-item" style="grid-column: 1 / -1;">
+                <div class="info-label">UsuarioId Interno (GUID Base de Datos)</div>
+                <div class="info-value" style="font-family: monospace; color: #a78bfa;">${data.usuarioId || "Vinculado dinámicamente para consultas"}</div>
+              </div>
+            </div>
+          `;
+          loadReport();
+        } else {
+          dot.className = "status-dot dot-gray";
+          title.textContent = "Estado de la Sesión: No Autenticado";
+          logoutBtn.style.display = "none";
+          seedBtn.style.display = "none";
+
+          content.innerHTML = `
+            <p style="color: var(--text-muted); font-size: 0.95rem;">
+              No hay una sesión activa. Inicia sesión con cualquiera de los proveedores configurados a continuación para acceder a la aplicación y consultar tus reportes.
+            </p>
+          `;
+          loadReport();
+        }
+      } catch (err) {
+        console.error(`[Frontend] Error en fetch a /api/auth/me:`, err);
+        dot.className = "status-dot dot-gray";
+        title.textContent = "Estado de la Sesión: Desconectado";
+        logoutBtn.style.display = "none";
+        seedBtn.style.display = "none";
+        content.innerHTML = `
+          <p style="color: var(--danger); font-size: 0.95rem;">
+            No se pudo contactar a la API en <code>${API_URL}</code> (${err.message}). Asegúrate de haber iniciado el backend y aceptado el certificado si es HTTPS.
+          </p>
+        `;
+        renderReportUnauthorized("Desconectado de la API.");
+      }
+    }
+
+    // 3. Consulta de Reporte Autorizado (/api/reportes/salud-financiera)
+    async function loadReport() {
+      const container = document.getElementById("reporte-content");
+
+      try {
+        console.log(`[Frontend] Consultando reporte en: ${API_URL}/api/reportes/salud-financiera`);
+        const res = await fetch(`${API_URL}/api/reportes/salud-financiera`, {
+          method: "GET",
+          credentials: "include"
+        });
+
+        console.log(`[Frontend] Código HTTP del reporte:`, res.status);
+
+        if (res.status === 401) {
+          renderReportUnauthorized("Acceso denegado (HTTP 401 Unauthorized): Se requiere una sesión activa.");
+          return;
+        }
+
+        if (res.status === 403) {
+          renderReportUnauthorized("Acceso restringido (HTTP 403 Forbidden): La identidad no está vinculada.");
+          return;
+        }
+
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        console.log(`[Frontend] Datos del reporte recibidos:`, data);
+        renderReportSuccess(data);
+      } catch (err) {
+        console.error(`[Frontend] Error cargando reporte:`, err);
+        renderReportUnauthorized(`Error al obtener reporte: ${err.message}`);
+      }
+    }
+
+    function renderReportUnauthorized(reason) {
+      const container = document.getElementById("reporte-content");
+      container.innerHTML = `
+        <div style="background: rgba(239, 68, 68, 0.08); border: 1px dashed rgba(239, 68, 68, 0.3); border-radius: 0.75rem; padding: 1.5rem; text-align: center;">
+          <p style="font-size: 1.1rem; font-weight: 700; color: var(--danger); margin-bottom: 0.5rem;">
+            🔒 Reporte Protegido &bull; HTTP 401 Unauthorized
+          </p>
+          <p style="color: var(--text-muted); font-size: 0.9rem; max-width: 550px; margin: 0 auto 1rem auto;">
+            ${reason} Inicia sesión con Dropbox (u otro proveedor configurado) para generar y visualizar tu diagnóstico de salud financiera.
+          </p>
+          <button class="btn-sm" style="background: #334155;" onclick="testUnauthorizedDirectly()">
+            Reintentar petición GET (Comprobar 401)
+          </button>
+        </div>
+      `;
+    }
+
+    function renderReportSuccess(report) {
+      const container = document.getElementById("reporte-content");
+      const diag = report.diagnostico;
+      const metas = report.metasAhorro;
+      const recurrencias = report.compromisosRecurrentes;
+      const recordatorios = report.recordatoriosPago;
+      const presupuestos = report.presupuestos;
+
+      container.innerHTML = `
+        <!-- Diagnóstico Banner -->
+        <div class="health-banner" style="background: rgba(15, 23, 42, 0.7); border: 1px solid ${diag.colorHex};">
+          <div>
+            <div style="font-size: 0.8rem; text-transform: uppercase; color: var(--text-muted); margin-bottom: 0.25rem;">
+              Diagnóstico Planificado Dev3
+            </div>
+            <div style="font-weight: 700; font-size: 0.95rem; color: var(--text-main);">
+              ${diag.mensaje}
+            </div>
+          </div>
+          <span class="health-badge" style="background: ${diag.colorHex}; color: #0b1120;">
+            ${diag.nivelSalud}
+          </span>
+        </div>
+
+        <!-- KPIs Resumen 4 Tablas -->
+        <div class="kpi-row">
+          <div class="kpi-card">
+            <div class="kpi-title">Metas de Ahorro</div>
+            <div class="kpi-value">${metas.porcentajeAvanceGlobal}%</div>
+            <div class="progress-bar-container">
+              <div class="progress-bar-fill" style="width: ${Math.min(100, metas.porcentajeAvanceGlobal)}%;"></div>
+            </div>
+            <div class="kpi-sub">${metas.totalMontoAhorrado} BOB de ${metas.totalMontoObjetivo} BOB</div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-title">Flujo Recurrente Neto</div>
+            <div class="kpi-value" style="color: ${recurrencias.flujoNetoMensualEstimado >= 0 ? 'var(--success)' : 'var(--danger)'};">
+              ${recurrencias.flujoNetoMensualEstimado >= 0 ? '+' : ''}${recurrencias.flujoNetoMensualEstimado} BOB
+            </div>
+            <div class="kpi-sub">Ingresos: +${recurrencias.totalIngresosMensualesEstimados} &bull; Gastos: -${recurrencias.totalGastosMensualesEstimados}</div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-title">Recordatorios Pendientes</div>
+            <div class="kpi-value" style="color: ${recordatorios.recordatoriosVencidos > 0 ? 'var(--danger)' : 'var(--warning)'};">
+              ${recordatorios.recordatoriosPendientes}
+            </div>
+            <div class="kpi-sub">
+              ${recordatorios.recordatoriosVencidos > 0 ? `<span style="color:var(--danger);font-weight:bold;">⚠️ ${recordatorios.recordatoriosVencidos} vencido(s)</span>` : 'Sin vencimientos críticos'} &bull; ${recordatorios.totalMontoPendiente} BOB pend.
+            </div>
+          </div>
+
+          <div class="kpi-card">
+            <div class="kpi-title">Presupuesto Mes (${presupuestos.mesActual}/${presupuestos.añoActual})</div>
+            <div class="kpi-value">${presupuestos.totalPresupuestadoMesActual} BOB</div>
+            <div class="kpi-sub">${presupuestos.cantidadPresupuestos} límite(s) configurado(s)</div>
+          </div>
+        </div>
+
+        <!-- Desglose de Compromisos y Metas -->
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(360px, 1fr)); gap: 1rem;">
+          <!-- Metas -->
+          <div style="background: #0f172a; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--card-border);">
+            <div style="font-weight: 700; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--primary);">
+              🎯 Metas de Ahorro (${metas.detalle.length})
+            </div>
+            ${metas.detalle.length === 0 ? '<p style="color:var(--text-muted);font-size:0.85rem;">No tienes metas registradas.</p>' : `
+              <table class="report-table">
+                <thead><tr><th>Meta</th><th>Progreso</th><th>Objetivo</th><th>Estado</th></tr></thead>
+                <tbody>
+                  ${metas.detalle.map(m => `
+                    <tr>
+                      <td style="font-weight:600;">${m.nombre}</td>
+                      <td>${m.montoAhorrado} BOB (${m.porcentajeAvance}%)</td>
+                      <td>${m.montoObjetivo} BOB</td>
+                      <td><span style="font-size:0.75rem; color:${m.estado === 'completada' ? 'var(--success)' : 'var(--primary)'};">${m.estado}</span></td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            `}
+          </div>
+
+          <!-- Recordatorios de Pago -->
+          <div style="background: #0f172a; padding: 1rem; border-radius: 0.75rem; border: 1px solid var(--card-border);">
+            <div style="font-weight: 700; font-size: 0.9rem; margin-bottom: 0.5rem; color: var(--warning);">
+              ⏰ Recordatorios de Pago (${recordatorios.detalle.length})
+            </div>
+            ${recordatorios.detalle.length === 0 ? '<p style="color:var(--text-muted);font-size:0.85rem;">No hay recordatorios registrados.</p>' : `
+              <table class="report-table">
+                <thead><tr><th>Título</th><th>Vencimiento</th><th>Monto</th><th>Estado</th></tr></thead>
+                <tbody>
+                  ${recordatorios.detalle.map(r => `
+                    <tr>
+                      <td style="font-weight:600;">${r.titulo}</td>
+                      <td style="color:${r.vencido ? 'var(--danger)' : 'var(--text-muted)'};">${r.fechaVencimiento} ${r.vencido ? '(!)' : ''}</td>
+                      <td>${r.montoEstimado || 0} BOB</td>
+                      <td>${r.pagado ? '<span style="color:var(--success);">Pagado</span>' : '<span style="color:var(--warning);">Pendiente</span>'}</td>
+                    </tr>
+                  `).join('')}
+                </tbody>
+              </table>
+            `}
+          </div>
+        </div>
+      `;
+    }
+
+    async function seedData() {
+      try {
+        showAlert("Sembrando datos de prueba en la base de datos para Dev3...", "info");
+        const res = await fetch(`${API_URL}/api/reportes/sembrar-datos-ejemplo`, {
+          method: "POST",
+          credentials: "include"
+        });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+        showAlert(data.mensaje || "Datos de prueba generados.", "success");
+        await loadReport();
+      } catch (err) {
+        showAlert(`Error al sembrar datos: ${err.message}`, "error");
+      }
+    }
+
+    async function testUnauthorizedDirectly() {
+      try {
+        showAlert("Ejecutando prueba sin credenciales a /api/reportes/salud-financiera...", "info");
+        // Hacemos fetch explícitamente sin credenciales para forzar y demostrar el 401
+        const res = await fetch(`${API_URL}/api/reportes/salud-financiera`, {
+          method: "GET",
+          credentials: "omit"
+        });
+        showAlert(`Respuesta de la API sin sesión: HTTP ${res.status} ${res.statusText}`, res.status === 401 ? "warning" : "info");
+        if (res.status === 401) {
+          renderReportUnauthorized("Demostración exitosa: La API rechazó la solicitud con HTTP 401 Unauthorized al no contar con cookie de sesión.");
+        }
+      } catch (err) {
+        showAlert(`Error en prueba 401: ${err.message}`, "error");
+      }
+    }
+
+    // 4. Consulta de Proveedores Dinámicos (/api/auth/providers)
+    const providerMeta = {
+      Google: { tag: "OIDC", btnClass: "btn-google", color: "var(--google)" },
+      Discord: { tag: "OAuth2", btnClass: "btn-discord", color: "var(--discord)" },
+      Twitch: { tag: "OAuth2", btnClass: "btn-twitch", color: "var(--twitch)" },
+      Spotify: { tag: "OAuth2 + PKCE", btnClass: "btn-spotify", color: "var(--spotify)" },
+      Dropbox: { tag: "OAuth2 + PKCE", btnClass: "btn-dropbox", color: "var(--dropbox)" },
+      Microsoft: { tag: "OIDC + PKCE", btnClass: "btn-microsoft", color: "var(--microsoft)" }
+    };
+
+    async function loadProviders() {
+      const container = document.getElementById("providers-container");
+      try {
+        const res = await fetch(`${API_URL}/api/auth/providers`, { credentials: "include" });
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const providers = await res.json();
+
+        container.innerHTML = providers.map(p => {
+          const meta = providerMeta[p.name] || { tag: "OAuth", btnClass: "btn-dropbox", color: "var(--primary)" };
+          const pLower = p.name.toLowerCase();
+          const returnUrl = encodeURIComponent(window.location.href);
+          const loginUrl = `${API_URL}/api/auth/${pLower}/login?returnUrl=${returnUrl}`;
+
+          if (p.configured) {
+            return `
+              <div class="provider-card" style="border-left: 4px solid ${meta.color};">
+                <div class="provider-header">
+                  <span class="provider-name">${p.name}</span>
+                  <span class="tag tag-configured">Configurado &bull; ${meta.tag}</span>
+                </div>
+                <a href="${loginUrl}" class="btn ${meta.btnClass}">
+                  Iniciar sesión con ${p.name}
+                </a>
+              </div>
+            `;
+          } else {
+            return `
+              <div class="provider-card" style="opacity: 0.6;">
+                <div class="provider-header">
+                  <span class="provider-name" style="color: var(--text-muted);">${p.name}</span>
+                  <span class="tag tag-pending">Pendiente &bull; ${meta.tag}</span>
+                </div>
+                <button class="btn btn-sm" disabled title="No configurado en el archivo .env">
+                  Sin credenciales en .env
+                </button>
+              </div>
+            `;
+          }
+        }).join("");
+      } catch (err) {
+        container.innerHTML = `
+          <p style="color: var(--danger); font-size: 0.9rem;">
+            Error cargando proveedores desde <code>${API_URL}/api/auth/providers</code>: ${err.message}
+          </p>
+        `;
+      }
+    }
+
+    // 5. Logout Funcional con Protección CSRF (/api/auth/csrf y /api/auth/logout)
+    async function logout() {
+      try {
+        showAlert("Obteniendo token de verificación antiforgery...", "info");
+        const csrfRes = await fetch(`${API_URL}/api/auth/csrf`, {
+          method: "GET",
+          credentials: "include"
+        });
+        if (!csrfRes.ok) throw new Error("No se pudo obtener el token CSRF");
+        const { token } = await csrfRes.json();
+
+        showAlert("Cerrando sesión en el backend...", "info");
+        const logoutRes = await fetch(`${API_URL}/api/auth/logout`, {
+          method: "POST",
+          credentials: "include",
+          headers: {
+            "RequestVerificationToken": token,
+            "Accept": "application/json"
+          }
+        });
+
+        if (logoutRes.ok) {
+          showAlert("Sesión cerrada exitosamente.", "success");
+        } else {
+          showAlert(`Aviso al cerrar sesión: HTTP ${logoutRes.status}`, "warning");
+        }
+      } catch (err) {
+        showAlert(`Error durante logout: ${err.message}`, "error");
+      } finally {
+        await refreshSession();
+      }
+    }
+
+    // Inicializar al cargar
+    window.addEventListener("DOMContentLoaded", () => {
+      updateApiDisplay();
+      refreshSession();
+      loadProviders();
+
+      const params = new URLSearchParams(window.location.search);
+      const error = params.get("error");
+      if (error) {
+        showAlert(`Error de autenticación reportado: ${error}`, "error");
+      }
+    });
+  </script>
+</body>
+</html>

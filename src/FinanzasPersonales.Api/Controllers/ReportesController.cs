@@ -1,16 +1,13 @@
-using Microsoft.AspNetCore.Authorization;
-using FinanzasPersonales.Api.Services;
-
-using Microsoft.AspNetCore.Http;
-using Microsoft.AspNetCore.Mvc;
-using FinanzasPersonales.Api;
 using System.Security.Claims;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Mvc;
 
-namespace MyApp.Namespace
-{
-    [ApiController]
+namespace FinanzasPersonales.Api.Controllers;
+
+[ApiController]
 [Route("api/reportes")]
 [Authorize]
+[ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
 public class ReportesController : ControllerBase
 {
     private readonly ReportesService _reportesService;
@@ -23,24 +20,20 @@ public class ReportesController : ControllerBase
     [HttpGet("cuentas-flujo")]
     public async Task<IActionResult> GetCuentasYFlujo(CancellationToken ct)
     {
-        var usuarioId = ObtenerUsuarioIdDesdeClaims();
-        if (usuarioId is null)
-            return Unauthorized(new { mensaje = "Sesión sin identificador de usuario válido." });
+        var email = User.FindFirstValue(ClaimTypes.Email)
+                 ?? User.FindFirstValue("email");
 
-        var reporte = await _reportesService.ObtenerCuentasYFlujoAsync(usuarioId.Value, ct);
+        if (string.IsNullOrWhiteSpace(email))
+            return Unauthorized(new { mensaje = "La sesión actual no contiene un correo electrónico válido." });
+
+        var nombre = User.Identity?.Name
+                  ?? User.FindFirstValue(ClaimTypes.Name)
+                  ?? User.FindFirstValue("name");
+
+        var reporte = await _reportesService.ObtenerCuentasYFlujoPorEmailAsync(email, nombre, ct);
         if (reporte is null)
             return Forbid();
 
         return Ok(reporte);
     }
-
-
-    private Guid? ObtenerUsuarioIdDesdeClaims()
-    {
-        var valor = User.FindFirstValue("usuario_id")
-                 ?? User.FindFirstValue(ClaimTypes.NameIdentifier);
-
-        return Guid.TryParse(valor, out var guid) ? guid : null;
-    }
-}
 }

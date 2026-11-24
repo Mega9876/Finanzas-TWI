@@ -1,5 +1,5 @@
 ﻿using FinanzasPersonales.Api.Data;
-using FinanzasPersonales.Api.DTOs;
+using FinanzasPersonales.Api.Models;
 using Microsoft.EntityFrameworkCore;
 
 namespace FinanzasPersonales.Api;
@@ -11,6 +11,46 @@ public class ReportesService
     public ReportesService(FinanzasDbContext db)
     {
         _db = db;
+    }
+
+    public async Task<ReporteCuentasFlujoDto?> ObtenerCuentasYFlujoPorEmailAsync(
+        string email,
+        string? nombre = null,
+        CancellationToken ct = default)
+    {
+        if (string.IsNullOrWhiteSpace(email))
+            return null;
+
+        var emailNormalizado = email.Trim().ToLowerInvariant();
+
+        var usuario = await _db.Usuarios
+            .FirstOrDefaultAsync(u => u.Email.ToLower() == emailNormalizado, ct);
+
+        if (usuario is null)
+        {
+            var nombreResuelto = !string.IsNullOrWhiteSpace(nombre)
+                ? nombre.Trim()
+                : emailNormalizado.Split('@')[0];
+
+            usuario = new Usuario
+            {
+                Id = Guid.NewGuid(),
+                Nombre = nombreResuelto,
+                Email = emailNormalizado,
+                PasswordHash = string.Empty,
+                FechaCreacion = DateTimeOffset.UtcNow,
+                Activo = true
+            };
+
+            _db.Usuarios.Add(usuario);
+            await _db.SaveChangesAsync(ct);
+        }
+        else if (!usuario.Activo)
+        {
+            return null;
+        }
+
+        return await ObtenerCuentasYFlujoAsync(usuario.Id, ct);
     }
 
     public async Task<ReporteCuentasFlujoDto?> ObtenerCuentasYFlujoAsync(
@@ -55,13 +95,13 @@ public class ReportesService
             })
             .ToListAsync(ct);
 
-        var cuentasDto = new List<CuentaReporteDto>();
+        var cuentasDto = new List<CuentaReporteDto>(cuentasDatos.Count);
 
         foreach (var c in cuentasDatos)
         {
             var saldoActual = c.SaldoInicial + c.Ingresos - c.Gastos;
 
-            var cuentaDto = new CuentaReporteDto
+            cuentasDto.Add(new CuentaReporteDto
             {
                 CuentaId = c.Id,
                 Nombre = c.Nombre,
@@ -73,9 +113,7 @@ public class ReportesService
                 TotalGastos = c.Gastos,
                 SaldoActual = saldoActual,
                 CantidadMovimientos = c.CantidadMovimientos
-            };
-
-            cuentasDto.Add(cuentaDto);
+            });
         }
 
         var totalesPorMoneda = cuentasDto
