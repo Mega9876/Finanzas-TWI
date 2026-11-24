@@ -8,24 +8,21 @@ namespace FinanzasPersonales.Api.Controllers;
 
 [AllowAnonymous]
 [Route("auth/dev3")]
+[Route("auth/login")]
 [ResponseCache(NoStore = true, Location = ResponseCacheLocation.None)]
-public class Dev3SessionController(IAuthenticationSchemeProvider schemes) : Controller
+public class Dev3SessionController : Controller
 {
     [HttpGet("")]
-    public async Task<IActionResult> Index(string? error)
+    public IActionResult Index(string? error)
     {
-        ViewData["DropboxConfigured"] = await schemes.GetSchemeAsync(Dev3Authentication.DropboxScheme) is not null;
-        ViewData["MicrosoftConfigured"] = await schemes.GetSchemeAsync(Dev3Authentication.MicrosoftScheme) is not null;
-        // Lista cerrada: nunca mostrar texto no confiable devuelto por un proveedor.
-        ViewData["Error"] = error switch
+        // Alias históricos: una única interfaz en /. Solo conservar errores conocidos.
+        var allowedErrors = ExternalAuthentication.Providers.SelectMany(provider => new[]
         {
-            "dropbox-not-configured" => "Dropbox aún no tiene ClientId y ClientSecret configurados.",
-            "microsoft-not-configured" => "Microsoft aún no tiene ClientId y ClientSecret configurados.",
-            "dropbox-cancelled" or "microsoft-cancelled" => "Inicio de sesión cancelado.",
-            "dropbox-failed" or "microsoft-failed" => "No se pudo iniciar sesión. Vuelve a intentarlo o revisa la configuración del proveedor.",
-            _ => null
-        };
-        return View("~/Views/Dev3Session/Index.cshtml");
+            provider.Name.ToLowerInvariant() + "-not-configured", provider.Name.ToLowerInvariant() + "-cancelled",
+            provider.Name.ToLowerInvariant() + "-failed"
+        });
+        var query = error is not null && allowedErrors.Contains(error) ? "?error=" + Uri.EscapeDataString(error) : string.Empty;
+        return LocalRedirect(ExternalAuthentication.LoginPath + query);
     }
 
     [HttpGet("session")]
@@ -43,6 +40,8 @@ public class Dev3SessionController(IAuthenticationSchemeProvider schemes) : Cont
     public async Task<IActionResult> Logout()
     {
         await HttpContext.SignOutAsync(Dev3Authentication.LocalScheme);
-        return Redirect(Dev3Authentication.LoginPath);
+        if (HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.ISessionFeature>() is not null)
+            HttpContext.Session.Clear();
+        return LocalRedirect(ExternalAuthentication.LoginPath);
     }
 }

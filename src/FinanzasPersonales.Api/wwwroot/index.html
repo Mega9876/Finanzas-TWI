@@ -3,7 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Finanzas Personales - Autenticación OAuth 2.0 (Integrante 2)</title>
+  <meta name="referrer" content="no-referrer">
+  <title>Finanzas Personales - Autenticación externa</title>
   <style>
     :root {
       --bg-color: #0f172a;
@@ -94,6 +95,15 @@
       margin-top: 1rem;
     }
     .btn-logout:hover { background-color: var(--danger-hover); }
+    .provider-notice { color: var(--text-muted); font-size: 0.85rem; margin-top: -0.65rem; }
+    .auth-message {
+      padding: 1rem;
+      margin-bottom: 1.5rem;
+      border: 1px solid var(--accent);
+      border-radius: 0.5rem;
+      background: rgba(56, 189, 248, 0.08);
+      line-height: 1.5;
+    }
 
     .identity-card {
       background: rgba(15, 23, 42, 0.6);
@@ -144,12 +154,18 @@
 <body>
   <div class="container">
     <div class="header">
-      <span class="badge">Integrante 2</span>
+      <span class="badge">Equipo Finanzas-TWI</span>
       <h1>Finanzas Personales API</h1>
-      <p class="subtitle">Autenticación OAuth 2.0 con Twitch y Spotify</p>
+      <p class="subtitle">Google, Discord, Twitch, Spotify, Dropbox y Microsoft</p>
     </div>
 
+    <div id="auth-message" class="auth-message" role="alert" hidden></div>
+
     <div id="login-section" class="buttons-section">
+      <a href="/api/auth/google/login" class="btn btn-twitch">Iniciar sesión con Google</a>
+      <a href="/api/auth/discord/login" class="btn btn-twitch">Iniciar sesión con Discord</a>
+      <a href="/api/auth/dropbox/login" class="btn btn-twitch">Iniciar sesión con Dropbox</a>
+      <a href="/api/auth/microsoft/login" class="btn btn-twitch">Iniciar sesión con Microsoft</a>
       <!-- Botón Twitch -->
       <a href="/api/auth/twitch/login" class="btn btn-twitch">
         <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
@@ -180,7 +196,7 @@
           <span id="field-status" class="field-value">Consultando...</span>
         </div>
         <div class="field" id="row-user-id" style="display:none;">
-          <span class="field-label">ID Usuario (UUID)</span>
+          <span class="field-label">Identificador de sesión</span>
           <span id="field-user-id" class="field-value">-</span>
         </div>
         <div class="field" id="row-name" style="display:none;">
@@ -208,9 +224,57 @@
   </div>
 
   <script>
+    const providerNames = {
+      google: 'Google', discord: 'Discord', twitch: 'Twitch',
+      spotify: 'Spotify', dropbox: 'Dropbox', microsoft: 'Microsoft'
+    };
+    let authenticationNotice = '';
+
+    function showNotice(message) {
+      const notice = document.getElementById('auth-message');
+      notice.textContent = message;
+      notice.hidden = !message;
+    }
+
+    function readAuthenticationNotice() {
+      const code = new URLSearchParams(window.location.search).get('error');
+      for (const [key, name] of Object.entries(providerNames)) {
+        if (code === `${key}-not-configured`) {
+          authenticationNotice = `${name} está pendiente de configurar sus credenciales.`;
+        } else if (code === `${key}-cancelled`) {
+          authenticationNotice = `Se canceló el inicio de sesión con ${name}.`;
+        } else if (code === `${key}-failed`) {
+          authenticationNotice = `No se pudo iniciar sesión con ${name}. Vuelve a intentarlo o revisa su configuración.`;
+        }
+      }
+      // No mostrar ni interpretar textos arbitrarios de la URL o del proveedor.
+      showNotice(authenticationNotice);
+    }
+
+    async function checkProviders() {
+      try {
+        const response = await fetch('/api/auth/providers', { cache: 'no-store', credentials: 'same-origin' });
+        if (!response.ok) throw new Error('providers');
+        const providers = await response.json();
+        for (const provider of providers) {
+          const key = provider.name.toLowerCase();
+          if (!Object.hasOwn(providerNames, key) || provider.configured) continue;
+          const link = document.querySelector(`#login-section a[href="/api/auth/${key}/login"]`);
+          if (!link) continue;
+          const notice = document.createElement('span');
+          notice.className = 'provider-notice';
+          notice.textContent = 'Pendiente de configurar credenciales.';
+          link.insertAdjacentElement('afterend', notice);
+        }
+      } catch {
+        if (!authenticationNotice) showNotice('No se pudo consultar la configuración de los proveedores.');
+      }
+    }
+
     async function checkSession() {
       try {
-        const res = await fetch('/api/auth/me');
+        const res = await fetch('/api/auth/me', { cache: 'no-store', credentials: 'same-origin' });
+        if (!res.ok) throw new Error('session');
         const data = await res.json();
 
         const indicator = document.getElementById('status-indicator');
@@ -223,10 +287,10 @@
 
         if (data.isAuthenticated) {
           indicator.className = 'status-dot status-authenticated';
-          fieldStatus.textContent = 'Autenticado';
+          fieldStatus.textContent = data.proveedor ? `Autenticado con ${data.proveedor}` : 'Autenticado';
           fieldStatus.style.color = '#22c55e';
 
-          document.getElementById('field-user-id').textContent = data.usuarioId || '-';
+          document.getElementById('field-user-id').textContent = data.usuarioId || data.identificadorExterno || '-';
           document.getElementById('field-name').textContent = data.nombre || '-';
           document.getElementById('field-email').textContent = data.email || '-';
           document.getElementById('field-provider').textContent = data.proveedor || '-';
@@ -236,6 +300,7 @@
           rowEmail.style.display = 'flex';
           rowProvider.style.display = 'flex';
           logoutContainer.style.display = 'block';
+          if (authenticationNotice) showNotice(`${authenticationNotice} Tu sesión actual sigue activa.`);
         } else {
           indicator.className = 'status-dot status-anonymous';
           fieldStatus.textContent = 'Sin sesión activa';
@@ -246,20 +311,36 @@
           rowEmail.style.display = 'none';
           rowProvider.style.display = 'none';
           logoutContainer.style.display = 'none';
+          for (const id of ['field-user-id', 'field-name', 'field-email', 'field-provider']) {
+            document.getElementById(id).textContent = '-';
+          }
+          if (authenticationNotice) showNotice(authenticationNotice);
         }
-      } catch (err) {
-        console.error('Error al consultar sesión:', err);
+      } catch {
         document.getElementById('field-status').textContent = 'Error de conexión';
       }
     }
 
     async function logout() {
-      await fetch('/api/auth/logout', { method: 'POST', headers: { 'Accept': 'application/json' } });
-      window.location.reload();
+      try {
+        const csrfResponse = await fetch('/api/auth/csrf', { cache: 'no-store', credentials: 'same-origin' });
+        if (!csrfResponse.ok) throw new Error('csrf');
+        const csrf = await csrfResponse.json();
+        const response = await fetch('/api/auth/logout', {
+          method: 'POST', credentials: 'same-origin',
+          headers: { 'Accept': 'application/json', 'RequestVerificationToken': csrf.token }
+        });
+        if (!response.ok && response.status !== 401) throw new Error('logout');
+        window.location.assign('/');
+      } catch {
+        showNotice('No se pudo cerrar la sesión. Vuelve a intentarlo.');
+      }
     }
 
-    // Verificar sesión al cargar
-    checkSession();
+    readAuthenticationNotice();
+    checkProviders();
+    // También actualizar al volver con el botón Atrás (caché de navegación).
+    window.addEventListener('pageshow', checkSession);
   </script>
 </body>
 </html>

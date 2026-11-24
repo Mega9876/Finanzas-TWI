@@ -102,23 +102,37 @@ Registrado **antes de programar**. Cada integrante implementa **2 botones funcio
    dotnet run --project src/FinanzasPersonales.Api
    ```
 
-## Login externo Dev3 — Dropbox y Microsoft (Punto 2)
+## Autenticación externa unificada — seis proveedores
 
-En esta versión no están integrados los controladores de Google, Discord, Twitch ni Spotify, ni había un esquema de autenticación local. Dev3 incorpora una única cookie local `Cookies` para compartir con los futuros proveedores; esquemas externos `Dev3.Dropbox` y `Dev3.Microsoft`.
+Google, Discord, Twitch, Spotify, Dropbox y Microsoft usan la misma estructura: cada controlador declara únicamente su proveedor, esquema y rutas, y hereda login/consulta de identidad de `ExternalAuthControllerBase`. Toda la configuración está en `Authentication/ExternalAuthentication.cs`, con **un único registro de `Cookies`**. Esto resuelve el error de arranque `Scheme already exists: Cookies`.
 
-La página mínima es **https://localhost:7133/auth/dev3**. El puerto 7133 procede del perfil `https` existente en `Properties/launchSettings.json`.
+La única página es **https://localhost:7133/**, con el diseño oscuro, los seis botones, avisos de configuración/errores y la identidad activa. `/auth/login` y `/auth/dev3` redirigen a ella; ya no existe una segunda vista Razor. Después del login, cancelación o logout se vuelve a la misma interfaz. El puerto 7133 procede del perfil `https` existente en `Properties/launchSettings.json`.
 
 | Operación | Ruta |
 | --- | --- |
-| Página y botones | `GET /auth/dev3` |
-| Iniciar Dropbox | `POST /auth/dropbox/login` |
-| Callback Dropbox (middleware OAuth) | `/auth/dropbox/callback` |
-| Iniciar Microsoft | `POST /auth/microsoft/login` |
-| Callback Microsoft (middleware OIDC, `form_post`) | `/auth/microsoft/callback` |
-| Consultar identidad local | `GET /auth/dev3/session` |
-| Cerrar sesión local | `POST /auth/dev3/logout` |
+| Página, botones, avisos e identidad | `GET /` |
+| Login de cada proveedor | `GET` o `POST /api/auth/{proveedor}/login` |
+| Identidad del proveedor activo (401 sin sesión, 403 si es otro) | `GET /api/auth/{proveedor}/user` |
+| Identidad compartida | `GET /api/auth/me` |
+| Token CSRF para clientes del mismo origen | `GET /api/auth/csrf` |
+| Estado público de configuración, sin credenciales | `GET /api/auth/providers` |
+| Cerrar sesión local | `POST /api/auth/logout` |
+| Alias anteriores Dev3 | `/auth/dev3`, `/auth/dev3/session`, `/auth/dev3/logout`, `/auth/dropbox/login`, `/auth/microsoft/login` |
 
-Los tres POST de la interfaz exigen token antiforgery. Los callbacks los atienden los middleware oficiales, no acciones MVC manuales. No usar los callbacks como botones de login.
+`{proveedor}` es `google`, `discord`, `twitch`, `spotify`, `dropbox` o `microsoft`. Los POST de login y logout exigen token antiforgery (formulario o header `RequestVerificationToken`). GET login conserva los enlaces existentes, pero siempre usa state/correlación del middleware. `returnUrl` solo permite rutas locales: se rechazan redirecciones externas.
+
+Los callbacks los atienden los middleware oficiales, no acciones MVC manuales. Registrar estas URL exactas para el perfil HTTPS actual:
+
+| Proveedor | Callback completo | Protocolo |
+| --- | --- | --- |
+| Google | `https://localhost:7133/api/auth/google/callback` | OIDC, Code + PKCE, `form_post` |
+| Discord | `https://localhost:7133/api/auth/discord/callback` | OAuth Code confidencial |
+| Twitch | `https://localhost:7133/signin-twitch` | OAuth Code confidencial |
+| Spotify | `https://localhost:7133/signin-spotify` | OAuth Code + PKCE |
+| Dropbox | `https://localhost:7133/auth/dropbox/callback` | OAuth Code + PKCE |
+| Microsoft | `https://localhost:7133/auth/microsoft/callback` | OIDC, Code + PKCE, `form_post` |
+
+Cada proveedor mantiene las particularidades de su protocolo, no una validación criptográfica manual. No usar los callbacks como botones de login. Si antes Google/Discord tenían registrado `http://localhost:5257/...`, actualizar sus portales para el origen HTTPS real. Se acepta el antiguo `RedirectUri` para extraer **la ruta**, pero el origen/puerto del callback se obtiene de la petición actual.
 
 ### Configuración local sin secretos versionados
 
@@ -135,7 +149,9 @@ Los tres POST de la interfaz exigen token antiforgery. Los callbacks los atiende
    | `Authentication__Microsoft__TenantId` | `common` para personales y organizaciones; `consumers` solo personales; `organizations` solo organizaciones; o GUID de tenant |
    | `Authentication__Microsoft__CallbackPath` | `/auth/microsoft/callback` |
 
-3. .NET **no carga `.env` automáticamente**. Desde la raíz, en Bash, cargar el archivo propio y ejecutar:
+   Google, Discord, Twitch y Spotify usan exactamente `Authentication__{Proveedor}__ClientId`, `__ClientSecret` y `__CallbackPath`, con las rutas de la tabla anterior. Las antiguas claves `Auth__Twitch__...`/`AUTH__TWITCH__...` y Spotify siguen siendo compatibles; preferir el prefijo uniforme `Authentication`. Los valores `tu_...`, `placeholder_...` y vacíos no activan un proveedor.
+
+3. El proyecto usa `Env.NoClobber().TraversePath().Load()`: encuentra `.env` también al ejecutar desde `src/` y respeta variables ya exportadas. Desde la raíz, en Bash, también se puede cargar explícitamente el archivo propio y ejecutar:
 
    ```bash
    # Solo la primera vez, si aún no existe tu archivo local:
@@ -154,7 +170,7 @@ Los tres POST de la interfaz exigen token antiforgery. Los callbacks los atiende
 
    Si Linux solicita pasos adicionales para confiar el certificado en el navegador, seguir las instrucciones de `dotnet dev-certs`. No desactivar la validación TLS de los proveedores. No hace falta aplicar migraciones para probar estos botones.
 
-Sin ClientId y ClientSecret el proveedor no se registra: la página lo indica y el botón muestra un aviso controlado. Reiniciar la API al cambiar las variables. Los callbacks personalizados deben permanecer bajo `/auth/dropbox/` y `/auth/microsoft/`, ser distintos de `login` y actualizarse también en los portales.
+Sin ClientId y ClientSecret el proveedor no se registra: la página lo indica y el botón muestra un aviso controlado. Reiniciar la API al cambiar las variables. Los callbacks personalizados deben ser rutas locales distintas entre sí y no ocupar login, user, logout, identidad o CSRF; actualizar también los portales. No se necesita una conexión PostgreSQL para crear una sesión externa.
 
 ### Registrar Dropbox
 
@@ -182,37 +198,40 @@ El middleware OIDC valida state/correlación, nonce, firma, audiencia y vigencia
 
 ### Sesión y límites de seguridad
 
-- Una sola cookie `__Host-Finanzas.Session`, Secure, HttpOnly, SameSite=Lax y duración absoluta de 30 minutos, sin persistencia ni renovación deslizante.
+- Una sola cookie `.FinanzasPersonales.Auth`, Secure, HttpOnly, SameSite=Lax y duración absoluta de 30 minutos, sin persistencia ni renovación deslizante. Los seis proveedores usan esa misma sesión.
 - Correlación y nonce con cookies Secure/HttpOnly; los POST locales tienen protección antiforgery.
 - No se guardan tokens en la cookie (`SaveTokens=false`) ni se devuelven al navegador. Los diagnósticos internos de los handlers OAuth/OIDC se silencian para evitar registrar respuestas remotas; los fallos registran únicamente un aviso sanitizado.
-- Errores y cancelaciones muestran mensajes fijos sin reflejar textos remotos. La página usa escape HTML de Razor y no guarda la identidad en caché.
-- La identidad estable es proveedor + account_id para Dropbox, y emisor + sub verificados para Microsoft. El correo es opcional y solo informativo.
-- Ya existe `Usuario`, pero no una arquitectura de vinculación externa. **No se crean ni vinculan usuarios locales**, no se modifica su esquema y no se identifica una cuenta por correo. El identificador de sesión externo no debe usarse como `UsuarioId` de las tablas financieras.
+- Errores y cancelaciones muestran mensajes de una lista cerrada en la página oscura. Los textos se insertan mediante `textContent`, nunca como HTML. Las consultas de identidad/configuración evitan caché; al volver con Atrás se actualiza la sesión. Si falla otro proveedor, se avisa que la sesión anterior sigue activa.
+- La identidad estable es proveedor + ID para OAuth, y emisor + sub verificados para Google/Microsoft. Los seis emiten los mismos claims (`NameIdentifier`, `Name`, email opcional, `provider` y `external_provider`). El correo es solo informativo.
+- Ya existe `Usuario`, pero esta rama no tiene una vinculación segura para los seis proveedores. **No se crean ni vinculan usuarios locales por correo** ni se inventan emails o Guid. `/api/auth/me` devuelve `usuarioId: null` mientras no exista un vínculo local confiable; `identificadorExterno` es un dato diferente y nunca debe usarse como Guid financiero. Los servicios anteriores de login manual se conservan en disco, sin registro ni rutas activas; los controladores nuevos no los llaman. La autorización financiera requiere una integración explícita posterior.
 - Cerrar sesión elimina la cookie local; no revoca autorizaciones ni cierra la sesión del proveedor. Los CRUD existentes conservan su comportamiento: este aporte no implementa su autorización.
-- `Program.cs` conserva los contextos, servicios, Scalar y controladores existentes. Los imports globales añadidos al `.csproj` resuelven los namespaces faltantes de la integración recibida, sin cambiar modelos.
+- `Program.cs` conserva el contexto, los servicios CRUD, Scalar, sesión ASP.NET y archivos estáticos. Se retiró el OAuth inline/registro duplicado de cookie y se usa una sola extensión de autenticación. No se modifican modelos, tablas ni migraciones.
 
 ### Prueba manual y evidencias reales
 
-Comprobación automatizada sin credenciales reales (detener antes la API para liberar el puerto 7133):
+Comprobaciones automatizadas sin credenciales reales (utilizan sus propios puertos libres):
 
 ```bash
 dotnet restore src/FinanzasPersonales.Api
 dotnet build src/FinanzasPersonales.Api
-python3 tests/verify_dev3_auth.py
+python3 tests/verify_auth.py
+python3 tests/verify_auth_sessions.py
 ```
 
-El script inicia y detiene su propia API, comprueba la página, sesión anónima, CSRF, logout, callbacks alterados/reutilizados y redirecciones oficiales con IDs deliberadamente ficticios. No canjea códigos ni autentica usuarios. La prueba de Microsoft requiere acceso a su metadata OIDC pública. Solo su cliente local omite la confianza del certificado de desarrollo; no altera TLS del backend a los proveedores.
+El primer script inicia/detiene su propia API en un puerto libre y comprueba los seis controladores, página, sesión anónima, 401, CSRF, redirecciones abiertas, callbacks alterados/reutilizados, cancelación y redirecciones oficiales con IDs deliberadamente ficticios. No canjea códigos ni autentica usuarios. Google/Microsoft requieren acceso a su metadata OIDC pública. Solo su cliente local omite la confianza del certificado de desarrollo; no altera TLS del backend a los proveedores. El comando anterior `python3 tests/verify_dev3_auth.py` ejecuta ahora esta misma batería común.
 
-Para **cada proveedor**, con credenciales válidas y la API ejecutándose mediante HTTPS:
+`verify_auth_sessions.py` compila un harness contra la API existente, sin otro proyecto .NET. Usa perfiles simulados, claves de cookie efímeras y ninguna conexión PostgreSQL. Comprueba el contrato normalizado de los seis proveedores, cookies autenticadas, `/me`, `/user`, 403 al consultar otro proveedor, CSRF, logout y 401 después de salir. Para OIDC simula el resultado posterior a la validación: no demuestra la aceptación de tokens reales de Google/Microsoft. No crea rutas de pruebas ni mecanismos de bypass en producción.
 
-1. Abrir `/auth/dev3` y pulsar su botón.
-2. Confirmar que se navega al dominio oficial de Dropbox o `login.microsoftonline.com` y autenticarse/consentir.
-3. Regresar automáticamente a `/auth/dev3` y comprobar proveedor, identificador y nombre; correo cuando esté disponible.
-4. Abrir `/auth/dev3/session` en el mismo navegador: debe indicar `authenticated: true`.
-5. Volver a la página, pulsar **Cerrar sesión** y recargar `/auth/dev3/session`: debe indicar `authenticated: false`.
+Para **cada uno de los seis proveedores**, con credenciales válidas y la API ejecutándose mediante HTTPS:
+
+1. Abrir `/` y pulsar su botón.
+2. Confirmar que se navega al dominio oficial de ese proveedor y autenticarse/consentir.
+3. Regresar automáticamente a `/` y comprobar proveedor, identificador y nombre en la tarjeta oscura; correo cuando esté disponible.
+4. Abrir `/api/auth/me` en el mismo navegador: debe indicar `isAuthenticated: true`, y `/api/auth/{proveedor}/user` debe responder 200.
+5. Volver a la página, pulsar **Cerrar sesión** y recargar `/api/auth/me`: debe indicar `isAuthenticated: false`; el endpoint user vuelve a 401.
 6. Repetir cancelando el consentimiento. Probar también el callback sin state o con un state alterado: no debe crearse sesión.
 
-Capturar la compilación, botones, dominio oficial, identidad de retorno y sesión inactiva después de salir. **No capturar secretos, cookies, tokens, códigos de autorización ni URLs completas con state/code**. El login real solo se considera verificado tras completar ambos ciclos en navegador con aplicaciones registradas; compilar o comprobar redirecciones no demuestra autenticación real.
+Capturar la compilación, botones, dominio oficial, identidad de retorno y sesión inactiva después de salir. **No capturar secretos, cookies, tokens, códigos de autorización ni URLs completas con state/code**. El login real solo se considera verificado tras completar cada ciclo en navegador con las aplicaciones registradas; compilar o comprobar redirecciones no demuestra autenticación real.
 
 ## Documentación de contribución
 
