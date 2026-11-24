@@ -10,6 +10,9 @@ using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Mvc.Infrastructure;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Validators;
+using FinanzasPersonales.Api.Data;   // Ajusta al namespace de tu DbContext
+using FinanzasPersonales.Api.Models; // Ajusta al namespace de tu entidad Usuario
+using Microsoft.EntityFrameworkCore;
 
 namespace FinanzasPersonales.Api.Authentication;
 
@@ -42,6 +45,7 @@ public static class ExternalAuthentication
         services.AddAntiforgery(options =>
         {
             options.HeaderName = "RequestVerificationToken";
+
             options.Cookie.Name = isHttpMode ? "Finanzas.Antiforgery" : "__Host-Finanzas.Antiforgery";
             options.Cookie.SecurePolicy = isHttpMode ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
             options.Cookie.HttpOnly = true;

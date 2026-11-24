@@ -54,6 +54,7 @@ builder.Services.AddScoped<UsuarioService>();
 builder.Services.AddScoped<CategoriaService>();
 builder.Services.AddScoped<CuentaService>();
 builder.Services.AddScoped<MovimientoService>();
+builder.Services.AddScoped<ReportesService>();
 // Los servicios antiguos de OAuth manual se conservan en disco, pero los seis
 // proveedores usan ahora los middleware comunes; no se vinculan usuarios por email.
 
