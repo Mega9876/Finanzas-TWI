@@ -12,6 +12,9 @@ using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 using Microsoft.IdentityModel.Validators;
+using FinanzasPersonales.Api.Data;   // Ajusta al namespace de tu DbContext
+using FinanzasPersonales.Api.Models; // Ajusta al namespace de tu entidad Usuario
+using Microsoft.EntityFrameworkCore;
 
 namespace FinanzasPersonales.Api.Authentication;
 
