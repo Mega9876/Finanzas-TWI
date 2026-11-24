@@ -40,8 +40,8 @@ public class AuthController : ControllerBase
     [ValidateAntiForgeryToken]
     public async Task<IActionResult> Logout([FromQuery] string returnUrl = "/")
     {
-        if (!Url.IsLocalUrl(returnUrl))
-            return BadRequest(new { message = "returnUrl debe ser una ruta local." });
+        if (!EsUrlValida(returnUrl))
+            return BadRequest(new { message = "returnUrl debe ser una ruta local o un origen permitido." });
         await HttpContext.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
 
         if (HttpContext.Features.Get<Microsoft.AspNetCore.Http.Features.ISessionFeature>() != null)
@@ -54,6 +54,30 @@ public class AuthController : ControllerBase
             return Ok(new { mensaje = "Sesión cerrada correctamente." });
         }
 
-        return LocalRedirect(returnUrl);
+        if (Url.IsLocalUrl(returnUrl))
+            return LocalRedirect(returnUrl);
+
+        return Redirect(returnUrl);
+    }
+
+    private bool EsUrlValida(string? returnUrl)
+    {
+        if (string.IsNullOrWhiteSpace(returnUrl)) return true;
+        if (Url.IsLocalUrl(returnUrl)) return true;
+
+        if (Uri.TryCreate(returnUrl, UriKind.Absolute, out var uri))
+        {
+            var config = HttpContext.RequestServices.GetService<IConfiguration>();
+            var rawCors = config?["CORS_ALLOWED_ORIGINS"];
+            var defaultOrigins = new[] { "http://127.0.0.1:5500", "http://localhost:5500", "http://127.0.0.1:3000", "http://localhost:3000" };
+            var allowedOrigins = !string.IsNullOrWhiteSpace(rawCors)
+                ? rawCors.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                : defaultOrigins;
+
+            var origin = $"{uri.Scheme}://{uri.Authority}";
+            return allowedOrigins.Contains(origin, StringComparer.OrdinalIgnoreCase);
+        }
+
+        return false;
     }
 }

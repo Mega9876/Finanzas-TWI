@@ -1,0 +1,100 @@
+# ============================================================
+# Finanzas-TWI — Docker Compose DESARROLLO
+# Levanta: frontend (Nginx) + backend (.NET 10) + PostgreSQL
+# Uso:
+#   docker compose -f docker-compose.dev.yml up --build
+#   docker compose -f docker-compose.dev.yml down -v   # elimina también los volúmenes
+# ============================================================
+
+services:
+
+  # ----------------------------------------------------------
+  # Base de datos PostgreSQL
+  # ----------------------------------------------------------
+  db:
+    image: postgres:16-alpine
+    container_name: finanzas-db-dev
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: finanzas_db
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: ${DB_PASSWORD:-dev_password_cambiar}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    networks:
+      - finanzas-net
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d finanzas_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  # ----------------------------------------------------------
+  # Backend ASP.NET Core (.NET 10)
+  # ----------------------------------------------------------
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: finanzas-api-dev
+    restart: unless-stopped
+    ports:
+      # Puerto 5000 en el host para evitar colisiones con 8080
+      - "${API_PORT:-5000}:8080"
+    env_file:
+      - .env               # secretos locales (nunca en git)
+    environment:
+      # Conexión a la DB (sobreescribe .env si es necesario en dev)
+      ConnectionStrings__DefaultConnection: >-
+        Host=db;Port=5432;Database=finanzas_db;Username=postgres;Password=${DB_PASSWORD:-dev_password_cambiar}
+      # Modo HTTP seguro para contenedores sin TLS
+      ASPNETCORE_ENVIRONMENT: Development
+      DISABLE_HTTPS_REDIRECTION: "true"
+      USE_HTTP_COOKIES: "true"
+      # Data Protection compartido (clave de cifrado de cookies)
+      DATA_PROTECTION_KEYS_PATH: /app/dataprotection-keys
+      # CORS: orígenes permitidos separados por coma
+      CORS_ALLOWED_ORIGINS: >-
+        http://localhost:3000,http://localhost:5000,http://localhost:5500,http://127.0.0.1:3000,http://127.0.0.1:5000,http://127.0.0.1:5500
+    volumes:
+      # Volumen compartido de Data Protection (crítico para multi-instancia)
+      - dp_keys:/app/dataprotection-keys
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - finanzas-net
+
+  # ----------------------------------------------------------
+  # Frontend Nginx (HTML/JS SPA)
+  # ----------------------------------------------------------
+  frontend:
+    build:
+      context: .
+      dockerfile: Front/Dockerfile
+    container_name: finanzas-frontend-dev
+    restart: unless-stopped
+    ports:
+      - "${FRONTEND_PORT:-3000}:80"
+    environment:
+      # Inyecta la URL de la API hacia el navegador a través de config.js
+      API_URL: "${API_URL:-http://localhost:5000}"
+    depends_on:
+      - backend
+    networks:
+      - finanzas-net
+
+# ----------------------------------------------------------
+# Volúmenes y redes
+# ----------------------------------------------------------
+volumes:
+  pgdata:
+    name: finanzas-pgdata-dev
+  dp_keys:
+    name: finanzas-dp-keys-dev
+
+networks:
+  finanzas-net:
+    name: finanzas-network-dev
+    driver: bridge
